@@ -1,0 +1,67 @@
+
+
+
+
+Todos:
+- Konzept aufstellen (insbesondere Hyperparameter-Tuning)
+- Methoden ausführen
+- Ergenisse aufbereiten (Code/PDFs/...)
+- Vidoes cutten
+
+
+
+- R/Markdown with Code
+- PDF with Code and Results
+- File wer hat was gemacht
+
+
+
+
+
+
+
+Methodes for superviced classification:
+- LDA/QDA 
+	-> Hyperparameter = variance per group or not 
+	=> p(x|y=k) = Normvert = Quatsch (alles nominal)
+
+- Naive Bayes 
+	-> keine Hyperparameter (Vert-Annahme bei diskret => rel. Häufigkeit)
+	-> inner loss: zunächst keiner, da W-Keiten berechnet werden
+	-> outer loss: nicht benötigt
+
+- Logistic Regression 
+	-> Hyperparameter wären Variablen-Auswahl
+	-> inner loss: Bernoulli-Loss
+	-> outer loss: nicht benötigt
+
+- KNN 
+	-> Hyperparamter = Distanz-Maß + k 
+	-> inner loss: non, da W-Keiten berechnet werden
+	-> outer loss for hyper parameters: ???
+	-> Distanzmaße Neigbourhood:
+		- Gower-distance (suitable for discrete features)
+
+- Random Forest
+	-> Hyperparameter = Pruning-Maß
+	-> Inner loss: 
+	-> Pruning-Maße:
+		- Max Baum-Tiefe
+		- Min observations per leave
+	-> Distanz-Maße:
+		- # selbe Auprägungen
+	
+
+Performance-Measure for outer loss:
+	Fragen: 
+	1.) basiert auf Klasse oder Wkeit für Klasse 
+	2.) Falls Klasse => Thrashold?
+	[giftig = sehr schlimm]
+- ROC-Kurve + AUC in Abh. von pi_k
+- MCE = Missclassification Error = Anteil falsch klassifizierter
+- BS1 = Brier Score = MSE = für W-Keiten
+- Log-Loss = Bounoulli-Loss = Binary Loss = für W-Keiten
+- Confusion Matrix
+- TNR = Anteil der tatsächlich ungiftigen unter den als ungiftig klassifizierten
+
+=> Vorschlag: ROC mit AUC als Optimierungskriterium oder F1-Measure
