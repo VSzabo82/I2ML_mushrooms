@@ -77,7 +77,10 @@ learners = list(lrn("classif.featureless", predict_type = "prob", predict_sets =
                 lrn("classif.naive_bayes", predict_type = "prob", predict_sets = c("train", "test")),
                 lrn("classif.kknn", predict_type = "prob", predict_sets = c("train", "test")),
                 lrn("classif.rpart", predict_type = "prob", predict_sets = c("train", "test")),
-                lrn("classif.ranger", predict_type = "prob", predict_sets = c("train", "test")),
+                lrn("classif.ranger",
+                    predict_type = "prob",
+                    predict_sets = c("train", "test"),
+                    importance = "impurity"),
                 lrn("classif.log_reg", predict_type = "prob", predict_sets = c("train", "test"))
 )
 print(learners)
@@ -213,17 +216,23 @@ print(ranks)
 ################################################################################
 # Importance -------------------------------------------------------------------
 # ranger
-learner_i = lrn("classif.ranger", predict_type = "prob", importance = "impurity")
+learner_ranger = learners[[5]]
 # Variable importance mode, one of 'none', 'impurity', 'impurity_corrected', 
 # 'permutation'. The 'impurity' measure is the Gini index for classification, 
 # the variance of the responses for regression and the sum of test statistics 
 # (see splitrule) for survival.
 
-filter = flt("importance", learner = learner_i)
-filter$calculate(task)
-as.data.table(filter)
+filter = flt("importance", learner = learner_ranger)
+filter$calculate(task_shrooms)
+feature_scores <- as.data.table(filter)
 
-# ggplot noch dazu, aus code demo für random forests!
+ggplot(data = feature_scores, aes(x = reorder(feature, -score), y = score)) +
+  theme_bw() +
+  geom_bar(stat = "identity") +
+  ggtitle(label = "Variable Importance Mushroom Features") +
+  labs(x = "Features", y = "Variable Importance") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_y_continuous(breaks = pretty(1:550, 15))
 
 
 ## Logistic Regression convergence error: ------------
