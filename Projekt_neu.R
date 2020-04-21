@@ -1,13 +1,14 @@
-# I2ML Projekt #####################################################################################
+# I2ML Projekt #################################################################
 # Thema: Mushroom Classification - Edible or Poisonous?
-####################################################################################################
+################################################################################
 
-# Preparation --------------------------------------------------------------------------------------
+# Preparation ------------------------------------------------------------------
 library(tidyverse)
 library(mlr3verse)
 library(ranger)
 
 path_project_directory = "~/Studium/Statistik/WiSe1920/Intro2ML/I2ML_mushrooms/" 
+# path_project_directory = INSERTYOURPATHHERE
 # path_vicky = "C:/Users/vszab/Desktop/Uni/Statistik/Wahlpflicht/Machine Learning/Projekt/"
 
 setwd(path_project_directory)
@@ -20,7 +21,7 @@ mushrooms_data = read.csv("Data/mushrooms.csv") %>%
 str(mushrooms_data)
 
 # Train Test Split
-# Training set for tuning, test set for final evaluation
+# Training set for tuning, test set for final evaluation on untouched data
 train_test_ratio = .8
 mushrooms_data_training = dplyr::sample_frac(tbl = mushrooms_data,
                                               size = train_test_ratio)
@@ -28,14 +29,14 @@ mushrooms_data_test = dplyr::anti_join(x = mushrooms_data,
                                         y = mushrooms_data_training,
                                         by = "ID")
 
-mushrooms_data_training = select(mushrooms_data_training, -ID)
-mushrooms_data_ = select(mushrooms_data_test, -ID)
+mushrooms_data_training = dplyr::select(mushrooms_data_training, -ID)
+mushrooms_data_ = dplyr::select(mushrooms_data_test, -ID)
 
 # check domains of sampled variables
 # make sure that every category of every variable is at least once in the sample
 summary(mushrooms_data_training)
 
-# Construct Task -----------------------------------------------------------------------------------
+# Construct Classification Task ------------------------------------------------
 task_shrooms = TaskClassif$new(id = "mushrooms_data_training",
                                backend = mushrooms_data_training,
                                target = "class",
@@ -45,50 +46,47 @@ task_shrooms$feature_names
 # Target variable:
 autoplot(task_shrooms) + theme_bw()
 
-# Resampling Strategy ------------------------------------------------------------------------------
+# Resampling Strategies ----------------------------------------------------------
+# 10 fold cross validation for inner loop
 # resampling_inner_10CV = rsmp("cv", folds = 10L) # use this for final calculation
 resampling_inner_3CV = rsmp("cv", folds = 3L)
+# 10 fold cross validation for outer loop
 # resampling_outer_10CV = rsmp("cv", folds = 10L) # use this for final calculation
 resampling_outer_3CV = rsmp("cv", folds = 3L)
 
-# Performance Measures -----------------------------------------------------------------------------
+# Performance Measures ---------------------------------------------------------
 measures = list(
   msr("classif.auc",
-      id = "auc"),
+      id = "AUC"),
   msr("classif.fpr",
       id = "False Positive Rate"), # false positive rate especially interesting
   # for our falsely edible (although actually poisonous) classification
   msr("classif.sensitivity",
-      id = "sensitivity"),
+      id = "Sensitivity"),
   msr("classif.specificity",
-      id = "specificity"),
-  #################################
-  # warum nehmen wir eigtl nicht den CE?
+      id = "Specificity"),
   msr("classif.ce", 
-      id = "mmce")
-  #################################
+      id = "MMCE")
 )
 
-####################################################################################################
-# Tuning -------------------------------------------------------------------------------------------
+# Tuning -----------------------------------------------------------------------
 # # what COULD we tune in the diffferent models?
 # for(i in seq(1,5)){
 #   print(learners[[i]]$param_set)
 # }
 
-# Setting Parameter for Autotune -------------------------------------------------------------------
+# Setting Parameter for Autotune -----------------------------------------------
 # Choose optimization algorithm:
 tuner_grid_search = tnr("grid_search") # try every step
 
 measures_tuning = msr("classif.auc")
-
 # Set the budget (when to terminate):
 # we test every candidate
 # terminator_all_candidates <- term("evals", n_evals = 500L)
 terminator_abgespeckt <- term("evals", n_evals = 2)
 
-
-# Autotune knn -------------------------------------------------------------------------------------
+# Autotune knn -----------------------------------------------------------------
+# Define learner:
 learner_knn = lrn("classif.kknn", predict_type = "prob")
 
 # we want to tune k in knn:
@@ -122,13 +120,14 @@ tuner_knn = AutoTuner$new(
 # nested_resampling$aggregate()
 
 # Autotune Random Forest ---------------------------------------------------------------------------
+# Define learner:
 learner_ranger = lrn("classif.ranger", predict_type = "prob", importance = "impurity")
 
-# and mtry in the random forest:
+# we tune mtry for the random forest:
 learner_ranger$param_set
 # goal: see how close we get to the default mtry (floor(sqrt(p)))
-# we will try all configurations: 1 to 21 features.
 
+# we will try all configurations: 1 to 21 features.
 param_mtry = ParamSet$new(
   list(
     ParamInt$new("mtry", lower = 1L, upper = 21L)
@@ -146,7 +145,7 @@ tuner_ranger = AutoTuner$new(
   tuner = tuner_grid_search
 )
 
-# Learner ------------------------------------------------------------------------------------------
+# Learner List------------------------------------------------------------------
 learners = list(lrn("classif.featureless", predict_type = "prob"),
                 lrn("classif.naive_bayes", predict_type = "prob"),
                 lrn("classif.rpart", predict_type = "prob"),
@@ -167,7 +166,7 @@ design = benchmark_grid(
 )
 print(design)
 
-# Run the models (in 3 fold CV)
+# Run the models (in 10 fold CV)
 bmr = benchmark(design, store_models = TRUE)
 print(bmr)
 
@@ -176,15 +175,19 @@ autoplot(bmr, type = "roc")
 
 (tab = bmr$aggregate(measures))
 
-# Ranked Performance
-ranks = tab[, .(learner_id, rank_train = rank(-auc), rank_test = rank(mmce))]
-print(ranks)
+# Ranked Performance------------------------------------------------------------
+ranks_performace = tab[, .(learner_id, rank_train = rank(-AUC), rank_test = rank(MMCE))] %>% 
+  dplyr::arrange(rank_train)
+print(ranks_performace)
 
-# predictions
+# Logistic Regression and Random Forest clear winners
+
+
+# Predictions knn
 result_knn = tab$resample_result[[6]]
 as.data.table(result_knn$prediction())
 
-# modelparameter
+# Model Parameter
 knn = bmr$score()[learner_id == "classif.kknn.tuned"]$learner
 for (i in 1:3){
   print(knn[[i]]$tuning_result$params)
@@ -195,7 +198,7 @@ for (i in 1:3){
   print(ranger[[i]]$tuning_result$params)
 }
 
-# Importance ---------------------------------------------------------------------------------------
+# Cariable Importance ---------------------------------------------------------
 # ranger
 # learner_ranger = learners[[5]]
 # Variable importance mode, one of 'none', 'impurity', 'impurity_corrected', 
@@ -211,17 +214,10 @@ ggplot(data = feature_scores, aes(x = reorder(feature, -score), y = score)) +
   theme_bw() +
   geom_bar(stat = "identity") +
   ggtitle(label = "Variable Importance Mushroom Features") +
-  labs(x = "Features", y = "Variable Importance") +
+  labs(x = "Features", y = "Variable Importance Score") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  scale_y_continuous(breaks = pretty(1:550, 15))
+  scale_y_continuous(breaks = pretty(1:500, 10))
 
-
-## Logistic Regression convergence error: ----------------------------------------------------------
-# Kudos: https://stats.stackexchange.com/questions/320661/unstable-logistic-regression-when-data-not-well-separated
-
-# Perfect seperation will cause the optimization not converge, not converge will cause the coefficients to be very large,
-# and the very large coefficient will cause "fitted probabilities numerically 0 or 1".
-# This is exactly the case: Our separation is ridiculously good, hence "no convergence"
 
 # Choose the best model and fit to whole dataset ---------------------------------------------------
 tab
@@ -242,7 +238,7 @@ tuner_ranger = AutoTuner$new(
 tuner_ranger$train(task_shrooms)
 
 # parameter
-tuner_ranger$tuning_instance$archive(unnest = "params")[,c("mtry","auc")]
+tuner_ranger$tuning_instance$archive(unnest = "params")[,c("mtry","AUC")]
 
 tuner_ranger$tuning_result
 # use those parameters for model
@@ -251,3 +247,15 @@ learner_final$param_set$values = tuner_ranger$tuning_result$params
 learner_final$train(task_shrooms)
 pred = learner_final$predict_newdata(newdata = mushrooms_data_test)
 pred$score(measures)
+
+
+
+# Closing remarks -------------------------------------------------------------
+## Logistic Regression convergence error: --------------------------------------
+# Kudos: https://stats.stackexchange.com/questions/320661/unstable-logistic-regression-when-data-not-well-separated
+
+# Perfect seperation will cause the optimization to not converge =>
+# not converge will cause the coefficients to be very large =>
+# the very large coefficients will cause "fitted probabilities numerically 0 or 1".
+# This is exactly the case: Our separation is ridiculously good, hence "no convergence"
+
