@@ -148,7 +148,7 @@ tuner_ranger = AutoTuner$new(
 
 learner_tree = lrn("classif.rpart",
                    predict_type = "prob",
-                   "cp" = 0.0001) 
+                   "cp" = 0.001) 
 # set cp super low to enforce new splits so we get FPR < 1%
 
 # Learner List------------------------------------------------------------------
@@ -174,8 +174,8 @@ print(design)
 
 execute_start_time <- Sys.time()
 # Run the models (in 10 fold CV)
-bmr = benchmark(design, store_models = TRUE)
-evaluation_time <- Sys.time() - execute_start_time # about 10 minutes
+bmr = benchmark(design, store_models = TRUE) # takes about 15 minutes
+evaluation_time <- Sys.time() - execute_start_time 
 rm(execute_start_time)
 
 print(bmr)
@@ -199,12 +199,12 @@ as.data.table(result_knn$prediction())
 
 # Model Parameter
 knn = bmr$score()[learner_id == "classif.kknn.tuned"]$learner
-for (i in 1:3){
+for (i in 1:10){
   print(knn[[i]]$tuning_result$params)
 }
 
 ranger = bmr$score()[learner_id == "classif.ranger.tuned"]$learner
-for (i in 1:3){
+for (i in 1:10){
   print(ranger[[i]]$tuning_result$params)
 }
 
@@ -251,7 +251,7 @@ tuner_ranger$train(task_shrooms)
 tuner_ranger$tuning_instance$archive(unnest = "params")[,c("mtry","AUC")]
 
 tuner_ranger$tuning_result
-tuner_ranger$
+
 # use those parameters for model
 learner_final = lrn("classif.ranger",predict_type = "prob")
 learner_final$param_set$values = tuner_ranger$tuning_result$params
@@ -261,20 +261,21 @@ pred$score(measures)
 
 # Tree Plot ------------------------------------------------------------------
 # rpart CART implementation:
-mod_mod_rpart_tree_1 <- rpart::rpart(class ~ ., 
-                                     data = mushrooms_treedata_training_1,
-                                     cp = .00001)
-summary(mod_rpart_tree_1)
-mod_rpart_tree_1$splits
-mod_rpart_tree_1$variable.importance
+# rerun the model directly since we cannot access the rpart model in benchmark()
+mod_rpart_tree <- rpart::rpart(class ~ ., 
+                                     data = mushrooms_data_training,
+                                     cp = 0.001)
+summary(mod_rpart_tree)
+mod_rpart_tree$splits
+mod_rpart_tree$variable.importance
 
-plot_tree_1 <- rattle::fancyRpartPlot(mod_rpart_tree_1,
+plot_tree_1 <- rattle::fancyRpartPlot(mod_rpart_tree,
                                       sub = "",
                                       caption = "CART Train Set 1",
                                       palettes = c("Blues",# edible
                                                    "Reds"))# poisonous
 
-rpart::plotcp(mod_rpart_tree_1) # pruning unnecessary
+rpart::plotcp(mod_rpart_tree) # pruning unnecessary
 
 # Closing remarks -------------------------------------------------------------
 ## Logistic Regression convergence error: --------------------------------------
