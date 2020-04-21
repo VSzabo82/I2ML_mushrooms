@@ -49,10 +49,10 @@ autoplot(task_shrooms) + theme_bw()
 # Resampling Strategies ----------------------------------------------------------
 # 10 fold cross validation for inner loop
 # resampling_inner_10CV = rsmp("cv", folds = 10L) # use this for final calculation
-resampling_inner_3CV = rsmp("cv", folds = 3L)
+resampling_inner_3CV = rsmp("cv", folds = 5L)
 # 10 fold cross validation for outer loop
 # resampling_outer_10CV = rsmp("cv", folds = 10L) # use this for final calculation
-resampling_outer_3CV = rsmp("cv", folds = 3L)
+resampling_outer_3CV = rsmp("cv", folds = 10L)
 
 # Performance Measures ---------------------------------------------------------
 measures = list(
@@ -77,13 +77,14 @@ measures = list(
 
 # Setting Parameter for Autotune -----------------------------------------------
 # Choose optimization algorithm:
-tuner_grid_search = tnr("grid_search") # try every step
+# no need to etra randomize, try to go every step
+tuner_grid_search = tnr("grid_search")  
 
 measures_tuning = msr("classif.auc")
 # Set the budget (when to terminate):
 # we test every candidate
-# terminator_all_candidates <- term("evals", n_evals = 500L)
-terminator_abgespeckt <- term("evals", n_evals = 2)
+terminator_knn <- term("evals", n_evals = 100)
+terminator_mtry <- term("evals", n_evals = 21)
 
 # Autotune knn -----------------------------------------------------------------
 # Define learner:
@@ -103,9 +104,9 @@ param_k = ParamSet$new(
 tuner_knn = AutoTuner$new(
   learner = learner_knn,
   resampling = resampling_inner_3CV,
-  measures = measures, #autotoner nimmt trotzdem nur classif.ce her!?
+  measures = measures_tuning, #autotoner nimmt trotzdem nur classif.ce her!?
   tune_ps = param_k, 
-  terminator = terminator_abgespeckt,
+  terminator = terminator_knn,
   tuner = tuner_grid_search
   )
 
@@ -139,16 +140,21 @@ param_mtry = ParamSet$new(
 tuner_ranger = AutoTuner$new(
   learner = learner_ranger,
   resampling = resampling_inner_3CV,
-  measures = measures, #autotoner nimmt trotzdem nur classif.ce her!?
+  measures = measures_tuning, #autotoner nimmt trotzdem nur classif.ce her!?
   tune_ps = param_mtry, 
-  terminator = terminator_abgespeckt,
+  terminator = terminator_mtry,
   tuner = tuner_grid_search
 )
+
+learner_tree = lrn("classif.rpart",
+                   predict_type = "prob",
+                   "cp" = 0.0001) 
+# set cp super low to enforce new splits so we get FPR < 1%
 
 # Learner List------------------------------------------------------------------
 learners = list(lrn("classif.featureless", predict_type = "prob"),
                 lrn("classif.naive_bayes", predict_type = "prob"),
-                lrn("classif.rpart", predict_type = "prob"),
+                learner_tree,
                 lrn("classif.log_reg", predict_type = "prob"),
                 tuner_ranger,
                 tuner_knn
@@ -166,8 +172,12 @@ design = benchmark_grid(
 )
 print(design)
 
+execute_start_time <- Sys.time()
 # Run the models (in 10 fold CV)
 bmr = benchmark(design, store_models = TRUE)
+evaluation_time <- Sys.time() - execute_start_time # about 10 minutes
+rm(execute_start_time)
+
 print(bmr)
 
 autoplot(bmr)
@@ -241,6 +251,7 @@ tuner_ranger$train(task_shrooms)
 tuner_ranger$tuning_instance$archive(unnest = "params")[,c("mtry","AUC")]
 
 tuner_ranger$tuning_result
+tuner_ranger$
 # use those parameters for model
 learner_final = lrn("classif.ranger",predict_type = "prob")
 learner_final$param_set$values = tuner_ranger$tuning_result$params
@@ -248,7 +259,22 @@ learner_final$train(task_shrooms)
 pred = learner_final$predict_newdata(newdata = mushrooms_data_test)
 pred$score(measures)
 
+# Tree Plot ------------------------------------------------------------------
+# rpart CART implementation:
+mod_mod_rpart_tree_1 <- rpart::rpart(class ~ ., 
+                                     data = mushrooms_treedata_training_1,
+                                     cp = .00001)
+summary(mod_rpart_tree_1)
+mod_rpart_tree_1$splits
+mod_rpart_tree_1$variable.importance
 
+plot_tree_1 <- rattle::fancyRpartPlot(mod_rpart_tree_1,
+                                      sub = "",
+                                      caption = "CART Train Set 1",
+                                      palettes = c("Blues",# edible
+                                                   "Reds"))# poisonous
+
+rpart::plotcp(mod_rpart_tree_1) # pruning unnecessary
 
 # Closing remarks -------------------------------------------------------------
 ## Logistic Regression convergence error: --------------------------------------
