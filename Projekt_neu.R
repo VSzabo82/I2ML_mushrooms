@@ -184,7 +184,7 @@ print(ranks)
 result_knn = tab$resample_result[[6]]
 as.data.table(result_knn$prediction())
 
-# models
+# modelparameter
 knn = bmr$score()[learner_id == "classif.kknn.tuned"]$learner
 for (i in 1:3){
   print(knn[[i]]$tuning_result$params)
