@@ -35,7 +35,7 @@ mushrooms_data_ = select(mushrooms_data_test, -ID)
 # make sure that every category of every variable is at least once in the sample
 summary(mushrooms_data_training)
 
-# Construct Task --------------------------------------------------------------
+# Construct Task -----------------------------------------------------------------------------------
 task_shrooms = TaskClassif$new(id = "mushrooms_data_training",
                                backend = mushrooms_data_training,
                                target = "class",
@@ -45,13 +45,13 @@ task_shrooms$feature_names
 # Target variable:
 autoplot(task_shrooms) + theme_bw()
 
-# Resampling Strategy ---------------------------------------------------------
+# Resampling Strategy ------------------------------------------------------------------------------
 # resampling_inner_10CV = rsmp("cv", folds = 10L) # use this for final calculation
 resampling_inner_3CV = rsmp("cv", folds = 3L)
 # resampling_outer_10CV = rsmp("cv", folds = 10L) # use this for final calculation
 resampling_outer_3CV = rsmp("cv", folds = 3L)
 
-# Performance Measures ---------------------------------------------------------
+# Performance Measures -----------------------------------------------------------------------------
 measures = list(
   msr("classif.auc",
       id = "auc"),
@@ -146,49 +146,6 @@ tuner_ranger = AutoTuner$new(
   tuner = tuner_grid_search
 )
 
-
-# ---------------------------
-
-# # Construct tuning instances:
-# tune_instance_knn = TuningInstance$new(
-#   task = task_shrooms,
-#   learner = learners[[3]],
-#   resampling = resampling_inner_3CV,
-#   measures = measures,
-#   param_set = param_k,
-#   terminator = terminator_abgespeckt
-# )
-# print(tune_instance_knn)
-# 
-# tune_instance_mtry = TuningInstance$new(
-#   task = task_shrooms,
-#   learner = learners[[5]],
-#   resampling = resampling_inner_3CV,
-#   measures = measures,
-#   param_set = param_mtry,
-#   terminator = terminator_abgespeckt
-# )
-# print(tune_instance_mtry)
-# 
-# # Start tuning:
-# result_tuning_k = tuner_grid_search$tune(tune_instance_knn)
-# result_tuning_mtry = tuner_grid_search$tune(tune_instance_mtry)
-# print(result_tuning_k)
-# 
-# # retrieve tuned hyperparameters:
-# tune_instance_knn$archive()
-# k_star = tune_instance_knn$archive(unnest = "params")[, c("k", "auc_train")] %>% 
-#   arrange(-auc_train) %>% 
-#   slice(1)
-# mtry_star = tune_instance_mtry$archive(unnest = "params")[, c("mtry", "auc_train")] %>% 
-#   arrange(-auc_train) %>% 
-#   slice(1)
-
-# ---------------------------
-# ---------------------------
-# ---------------------------
-# ---------------------------
-
 # Learner ------------------------------------------------------------------------------------------
 learners = list(lrn("classif.featureless", predict_type = "prob"),
                 lrn("classif.naive_bayes", predict_type = "prob"),
@@ -200,6 +157,9 @@ learners = list(lrn("classif.featureless", predict_type = "prob"),
 print(learners)
 
 # Results ------------------------------------------------------------------------------------------
+# only show warnings:
+# lgr::get_logger("mlr3")$set_threshold("warn")
+
 design = benchmark_grid(
   tasks = task_shrooms,
   learners = learners,
@@ -208,7 +168,7 @@ design = benchmark_grid(
 print(design)
 
 # Run the models (in 3 fold CV)
-bmr = benchmark(design)
+bmr = benchmark(design, store_models = TRUE)
 print(bmr)
 
 autoplot(bmr)
@@ -220,8 +180,22 @@ autoplot(bmr, type = "roc")
 ranks = tab[, .(learner_id, rank_train = rank(-auc), rank_test = rank(mmce))]
 print(ranks)
 
-################################################################################
-# Importance -------------------------------------------------------------------
+# predictions
+result_knn = tab$resample_result[[6]]
+as.data.table(result_knn$prediction())
+
+# modelparameter
+knn = bmr$score()[learner_id == "classif.kknn.tuned"]$learner
+for (i in 1:3){
+  print(knn[[i]]$tuning_result$params)
+}
+
+ranger = bmr$score()[learner_id == "classif.ranger.tuned"]$learner
+for (i in 1:3){
+  print(ranger[[i]]$tuning_result$params)
+}
+
+# Importance ---------------------------------------------------------------------------------------
 # ranger
 # learner_ranger = learners[[5]]
 # Variable importance mode, one of 'none', 'impurity', 'impurity_corrected', 
@@ -242,10 +216,38 @@ ggplot(data = feature_scores, aes(x = reorder(feature, -score), y = score)) +
   scale_y_continuous(breaks = pretty(1:550, 15))
 
 
-## Logistic Regression convergence error: ------------
+## Logistic Regression convergence error: ----------------------------------------------------------
 # Kudos: https://stats.stackexchange.com/questions/320661/unstable-logistic-regression-when-data-not-well-separated
 
 # Perfect seperation will cause the optimization not converge, not converge will cause the coefficients to be very large,
 # and the very large coefficient will cause "fitted probabilities numerically 0 or 1".
 # This is exactly the case: Our separation is ridiculously good, hence "no convergence"
 
+# Choose the best model and fit to whole dataset ---------------------------------------------------
+tab
+# classif.ranger.tuned or log_reg
+
+# train tuner_ranger once again
+# eigentlich sollte man als Terminator eine bestimmte perfomance oder stagnation in perf wählen
+# da aber bei uns fast alle kombinationen 1 ergeben bei auc macht das wohl keinen Sinn
+terminator = term("evals", n_evals = 100)
+tuner_ranger = AutoTuner$new(
+  learner = learner_ranger,
+  resampling = resampling_inner_3CV,
+  measures = measures, #autotoner nimmt trotzdem nur classif.ce her!?
+  tune_ps = param_mtry, 
+  terminator = terminator,
+  tuner = tuner_grid_search
+)
+tuner_ranger$train(task_shrooms)
+
+# parameter
+tuner_ranger$tuning_instance$archive(unnest = "params")[,c("mtry","auc")]
+
+tuner_ranger$tuning_result
+# use those parameters for model
+learner_final = lrn("classif.ranger",predict_type = "prob")
+learner_final$param_set$values = tuner_ranger$tuning_result$params
+learner_final$train(task_shrooms)
+pred = learner_final$predict_newdata(newdata = mushrooms_data_test)
+pred$score(measures)
