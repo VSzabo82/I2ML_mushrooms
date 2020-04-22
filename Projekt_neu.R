@@ -74,9 +74,6 @@ measures = list(
 # }
 
 # Setting Parameter for Autotune -----------------------------------------------
-# Choose optimization algorithm:
-# no need to etra randomize, try to go every step
-tuner_grid_search = tnr("grid_search")  
 
 measures_tuning = msr("classif.auc")
 
@@ -94,6 +91,10 @@ param_k = ParamSet$new(
   )
 )
 
+# Choose optimization algorithm:
+# no need to etra randomize, try to go every step
+tuner_grid_search_knn = tnr("grid_search", resolution = 50)
+
 # Set the budget (when to terminate):
 # we test every candidate
 terminator_knn = term("evals", n_evals = 50)
@@ -105,7 +106,7 @@ tuner_knn = AutoTuner$new(
   measures = measures_tuning, 
   tune_ps = param_k, 
   terminator = terminator_knn,
-  tuner = tuner_grid_search
+  tuner = tuner_grid_search_knn
 )
 
 
@@ -125,8 +126,11 @@ param_mtry = ParamSet$new(
   # an improvement is tuning?
 )
 
-# Set the budget (when to terminate):
+# Choose optimization algorithm:
+# no need to etra randomize, try to go every step
+tuner_grid_search_ranger = tnr("grid_search", resolution = 21)  
 
+# Set the budget (when to terminate):
 terminator_mtry = term("evals", n_evals = 21)
 
 # Set up autotuner instance with the predefined setups
@@ -136,7 +140,7 @@ tuner_ranger = AutoTuner$new(
   measures = measures_tuning, 
   tune_ps = param_mtry, 
   terminator = terminator_mtry,
-  tuner = tuner_grid_search
+  tuner = tuner_grid_search_ranger
 )
 
 learner_tree = lrn("classif.rpart",
@@ -242,10 +246,10 @@ pred$score(measures)
 tuner_ranger = AutoTuner$new(
   learner = learner_ranger,
   resampling = resampling_inner_5CV,
-  measures = measures,
+  measures = measures_tuning,
   tune_ps = param_mtry, 
   terminator = terminator_mtry,
-  tuner = tuner_grid_search
+  tuner = tuner_grid_search_ranger
 )
 # Modell mit Autotuner trainieren
 tuner_ranger$train(task_mushrooms)
