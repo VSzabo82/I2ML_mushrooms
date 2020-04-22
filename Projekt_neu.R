@@ -171,7 +171,7 @@ print(design)
 
 execute_start_time <- Sys.time()
 # Run the models (in 10 fold CV)
-bmr = benchmark(design, store_models = TRUE) # takes about 15 minutes
+bmr = benchmark(design, store_models = TRUE) # takes about 45 minutes
 evaluation_time <- Sys.time() - execute_start_time 
 rm(execute_start_time)
 
