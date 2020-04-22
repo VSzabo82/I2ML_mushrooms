@@ -79,10 +79,6 @@ measures = list(
 tuner_grid_search = tnr("grid_search")  
 
 measures_tuning = msr("classif.auc")
-# Set the budget (when to terminate):
-# we test every candidate
-terminator_knn = term("evals", n_evals = 50)
-terminator_mtry = term("evals", n_evals = 21)
 
 # Autotune knn -----------------------------------------------------------------
 # Define learner:
@@ -98,6 +94,10 @@ param_k = ParamSet$new(
   )
 )
 
+# Set the budget (when to terminate):
+# we test every candidate
+terminator_knn = term("evals", n_evals = 50)
+
 # Set up autotuner instance with the predefined setups
 tuner_knn = AutoTuner$new(
   learner = learner_knn,
@@ -108,15 +108,6 @@ tuner_knn = AutoTuner$new(
   tuner = tuner_grid_search
 )
 
-# execute nested resampling
-# nested_resampling <- resample(task = task_mushrooms,
-#                               learner = tuner_knn,
-#                               resampling = resampling_outer_3CV)
-# 
-# nested_resampling$score()
-# #nested_resampling$score() %>% unlist()
-# nested_resampling$score()[, c("iteration", "classif.ce")]
-# nested_resampling$aggregate()
 
 # Autotune Random Forest ---------------------------------------------------------------------------
 # Define learner:
@@ -134,11 +125,15 @@ param_mtry = ParamSet$new(
   # an improvement is tuning?
 )
 
+# Set the budget (when to terminate):
+
+terminator_mtry = term("evals", n_evals = 21)
+
 # Set up autotuner instance with the predefined setups
 tuner_ranger = AutoTuner$new(
   learner = learner_ranger,
   resampling = resampling_inner_5CV,
-  measures = measures_tuning, #autotoner nimmt trotzdem nur classif.ce her!?
+  measures = measures_tuning, 
   tune_ps = param_mtry, 
   terminator = terminator_mtry,
   tuner = tuner_grid_search
@@ -182,7 +177,8 @@ autoplot(bmr)
 autoplot(bmr, type = "roc")
 
 (tab = bmr$aggregate(measures))
-bmr$score()
+bmr$score(measures)
+# log.reg zum Beispiel ist bei jedem Maß perfekt, wir wählen das als finales Modell
 
 # Ranked Performance------------------------------------------------------------
 ranks_performace = tab[, .(learner_id, rank_train = rank(-AUC), rank_test = rank(MMCE))] %>% 
@@ -229,12 +225,20 @@ ggplot(data = feature_scores, aes(x = reorder(feature, -score), y = score)) +
 
 
 # Choose the best model and fit on whole dataset ---------------------------------------------------
-tab
-# classif.ranger.tuned or log_reg
+# Wir hatten oben log.reg ausgewählt, random forest oder knn waren aber genauso gut
+# Choose final model
+learner_final = lrn("classif.log_reg",predict_type = "prob")
 
-# train tuner_ranger once again
-# eigentlich sollte man als Terminator eine bestimmte perfomance oder stagnation in perf wählen
-# da aber bei uns fast alle kombinationen 1 ergeben bei auc macht das wohl keinen Sinn
+# Train on whole train data
+learner_final$train(task_mushrooms)
+
+# Test on never touched test data (20% of whole data splitted at the beginning)
+pred = learner_final$predict_newdata(newdata = mushrooms_data_test)
+pred$score(measures)
+
+# Alternativ wegen dem converging problem: Auswahl random forest
+# Jetzt muss nochmal das Modell auf den gesamten Trainingsdaten getuned werden
+# um den besten hyperparameter zu finden
 tuner_ranger = AutoTuner$new(
   learner = learner_ranger,
   resampling = resampling_inner_5CV,
@@ -243,20 +247,22 @@ tuner_ranger = AutoTuner$new(
   terminator = terminator_mtry,
   tuner = tuner_grid_search
 )
+# Modell mit Autotuner trainieren
 tuner_ranger$train(task_mushrooms)
 
-# parameter
+# parameter aus dem tuning anschauen
 tuner_ranger$tuning_instance$archive(unnest = "params")[,c("mtry","AUC")]
-
 tuner_ranger$tuning_result
 
 # use those parameters for model
-learner_final = lrn("classif.ranger",predict_type = "prob")
-learner_final$param_set$values = tuner_ranger$tuning_result$params
-# Train on whole train data
-learner_final$train(task_mushrooms)
+learner_final2 = lrn("classif.ranger",predict_type = "prob")
+learner_final2$param_set$values = tuner_ranger$tuning_result$params
+
+# Train model with chosen hyperparameters on whole train data
+learner_final2$train(task_mushrooms)
+
 # Test on never touched test data (20% of whole data splitted at the beginning)
-pred = learner_final$predict_newdata(newdata = mushrooms_data_test)
+pred = learner_final2$predict_newdata(newdata = mushrooms_data_test)
 pred$score(measures)
 
 # Tree Plot ------------------------------------------------------------------
